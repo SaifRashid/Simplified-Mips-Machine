@@ -34,33 +34,16 @@ module alu (ALUctl,A,B,ALUOut,Zero);
 endmodule
 
 module MainControl (Op,Control); 
-  input [5:0] Op;
-  output reg [7:0] Control;
-// IDEX_RegDst,IDEX_ALUSrc,IDEX_MemtoReg,IDEX_RegWrite,IDEX_MemWrite,IDEX_Branch,IDEX_ALUOp
+  input [3:0] Op;
+  output reg [10:0] Control;
+// IDEX_RegDst,IDEX_ALUSrc,IDEX_MemtoReg,IDEX_RegWrite,IDEX_MemWrite,IDEX_Beq,IDEX_Bne,IDEX_ALUCtl
   always @(Op) case (Op)
+    4'b0000: Control <= 8'b10010_00_0010; // add
     6'b000000: Control <= 8'b10010010; // Rtype
     6'b100011: Control <= 8'b01110000; // LW    
     6'b101011: Control <= 8'b01001000; // SW    
     6'b000100: Control <= 8'b00000101; // BEQ   
     6'b001000: Control <= 8'b01010100; // ADDI
-  endcase
-endmodule
-
-module ALUControl (ALUOp,FuncCode,ALUCtl); 
-  input [1:0] ALUOp;
-  input [5:0] FuncCode;
-  output reg [3:0] ALUCtl;
-  always @(ALUOp,FuncCode) case (ALUOp)
-    2'b00: ALUCtl <= 4'b0010; // add
-    2'b01: ALUCtl <= 4'b0110; // subtract
-    2'b10: case (FuncCode)
-	     32: ALUCtl <= 4'b0010; // add
-	     34: ALUCtl <= 4'b0110; // sub
-	     36: ALUCtl <= 4'b0000; // and
-	     37: ALUCtl <= 4'b0001; // or
-	     39: ALUCtl <= 4'b1100; // nor
-	     42: ALUCtl <= 4'b0111; // slt
-    endcase
   endcase
 endmodule
 
@@ -113,13 +96,13 @@ module CPU (clock,PC,IFID_IR,IDEX_IR,EXMEM_IR,MEMWB_IR,WD);
    wire [31:0] PCplus4, NextPC;
    reg[31:0] PC, IMemory[0:1023], IFID_IR, IFID_PCplus4;
    alu fetch (4'b0010,PC,4,PCplus4,Unused1);
-   assign NextPC = (EXMEM_Branch && EXMEM_Zero) ? EXMEM_Target: PCplus4;
+   assign NextPC = (EXMEM_Beq && EXMEM_Zero || EXMEM_Bne && ~EXMEM_Zero) ? EXMEM_Target: PCplus4;
 // ID
    wire [7:0] Control;
    reg IDEX_RegWrite,IDEX_MemtoReg,
        IDEX_Branch,  IDEX_MemWrite,
        IDEX_ALUSrc,  IDEX_RegDst;
-   reg [1:0]  IDEX_ALUOp;
+   reg [1:0]  IDEX_ALUctl;
    wire [31:0] RD1,RD2,SignExtend, WD;
    reg [31:0] IDEX_PCplus4,IDEX_RD1,IDEX_RD2,IDEX_SignExt,IDEXE_IR;
    reg [31:0] IDEX_IR; // For monitoring the pipeline
@@ -138,11 +121,9 @@ module CPU (clock,PC,IFID_IR,IDEX_IR,EXMEM_IR,MEMWB_IR,WD);
    reg [31:0] EXMEM_IR; // For monitoring the pipeline
    reg [4:0] EXMEM_rd;
    wire [31:0] B,ALUOut;
-   wire [3:0] ALUctl;
    wire [4:0] WR;
    alu branch (4'b0010,IDEX_SignExt<<2,IDEX_PCplus4,Target,Unused2);
-   alu ex (ALUctl, IDEX_RD1, B, ALUOut, Zero);
-   ALUControl ALUCtrl(IDEX_ALUOp, IDEX_SignExt[5:0], ALUctl); // ALU control unit
+   alu ex (IDEX_ALUSrc, IDEX_RD1, B, ALUOut, Zero);
    assign B  = (IDEX_ALUSrc) ? IDEX_SignExt: IDEX_RD2;        // ALUSrc Mux 
    assign WR = (IDEX_RegDst) ? IDEX_rd: IDEX_rt;              // RegDst Mux
 // MEM
@@ -173,7 +154,7 @@ module CPU (clock,PC,IFID_IR,IDEX_IR,EXMEM_IR,MEMWB_IR,WD);
     IFID_IR <= IMemory[PC>>2];
 // ID
     IDEX_IR <= IFID_IR; // For monitoring the pipeline
-    {IDEX_RegDst,IDEX_ALUSrc,IDEX_MemtoReg,IDEX_RegWrite,IDEX_MemWrite,IDEX_Branch,IDEX_ALUOp} <= Control;   
+    {IDEX_RegDst,IDEX_ALUSrc,IDEX_MemtoReg,IDEX_RegWrite,IDEX_MemWrite,IDEX_Beq,IDEX_Bne,IDEX_ALUCtl} <= Control;   
     IDEX_PCplus4 <= IFID_PCplus4;
     IDEX_RD1 <= RD1; 
     IDEX_RD2 <= RD2;
@@ -184,7 +165,8 @@ module CPU (clock,PC,IFID_IR,IDEX_IR,EXMEM_IR,MEMWB_IR,WD);
     EXMEM_IR <= IDEX_IR; // For monitoring the pipeline
     EXMEM_RegWrite <= IDEX_RegWrite;
     EXMEM_MemtoReg <= IDEX_MemtoReg;
-    EXMEM_Branch   <= IDEX_Branch;
+    EXMEM_Beq   <= IDEX_Beq;
+    EXMEM_Bne   <= IDEX_Bne;
     EXMEM_MemWrite <= IDEX_MemWrite;
     EXMEM_Target <= Target;
     EXMEM_Zero <= Zero;
