@@ -181,40 +181,40 @@ module CPU (clock,PC,IFID_IR,IDEX_IR,EXMEM_IR,MEMWB_IR,WD);
    branch_control BranchControl(EXMEM_Beq,EXMEM_Bne,EXMEM_Zero,branchOut); //Branch Control Unit
    mux_2x1_16bit muxBranch(PCplus2,EXMEM_Target,branchOut,NextPC); //Branch MUX
 // ID
-   wire [10:0] Control;
-   reg IDEX_RegWrite,IDEX_MemtoReg,
+   wire [10:0] Control;  // Control signals
+   reg IDEX_RegWrite,IDEX_MemtoReg,  // Pipeline registers for control signals
        IDEX_Beq, IDEX_Bne, IDEX_MemWrite,
        IDEX_ALUSrc,  IDEX_RegDst;
-   reg [3:0]  IDEX_ALUctl;
-   wire [15:0] RD1,RD2,SignExtend, WD;
+   reg [3:0]  IDEX_ALUctl;  // ALU control signals for EX stage
+   wire [15:0] RD1,RD2,SignExtend, WD;  // Inputs for ID stage
    reg [15:0] IDEX_PCplus2,IDEX_RD1,IDEX_RD2,IDEX_SignExt,IDEXE_IR;
    reg [15:0] IDEX_IR; // For monitoring the pipeline
-   reg [1:0]  IDEX_rt,IDEX_rd;
+   reg [1:0]  IDEX_rt,IDEX_rd;  // Destination registers
    reg MEMWB_RegWrite; // part of MEM stage, but declared here before use (to avoid error)
    reg [1:0] MEMWB_rd; // part of MEM stage, but declared here before use (to avoid error)
-   reg_file rf (IFID_IR[11:10],IFID_IR[9:8],MEMWB_rd,WD,MEMWB_RegWrite,RD1,RD2,clock);
-   MainControl MainCtr (IFID_IR[15:12],Control); 
-   assign SignExtend = {{8{IFID_IR[7]}},IFID_IR[7:0]}; 
+   reg_file rf (IFID_IR[11:10],IFID_IR[9:8],MEMWB_rd,WD,MEMWB_RegWrite,RD1,RD2,clock);  // Register file
+   MainControl MainCtr (IFID_IR[15:12],Control);  // Main control unit generates control signals based on opcode
+   assign SignExtend = {{8{IFID_IR[7]}},IFID_IR[7:0]};  // Sign-extend immediate value
 // EXE
-   reg EXMEM_RegWrite,EXMEM_MemtoReg,
+   reg EXMEM_RegWrite,EXMEM_MemtoReg,  // Pipeline registers for control signals
        EXMEM_Beq, EXMEM_Bne, EXMEM_MemWrite;
-   wire [15:0] Target;
-   reg EXMEM_Zero;
-   reg [15:0] EXMEM_Target,EXMEM_ALUOut,EXMEM_RD2;
+   wire [15:0] Target;  // Branch target address
+   reg EXMEM_Zero;  // Zero flag from ALU
+   reg [15:0] EXMEM_Target,EXMEM_ALUOut,EXMEM_RD2;  // EX stage outputs to be passed to the MEM stage
    reg [15:0] EXMEM_IR; // For monitoring the pipeline
-   reg [1:0] EXMEM_rd;
-   wire [15:0] B,ALUOut;
-   wire [1:0] WR;
-   alu branch (4'b0010,IDEX_SignExt<<1,IDEX_PCplus2,Target,Unused2);
-   alu ex (IDEX_ALUctl, IDEX_RD1, B, ALUOut, Zero);
+   reg [1:0] EXMEM_rd;  // Destination register
+   wire [15:0] B,ALUOut;  // ALU input and output
+   wire [1:0] WR;  // Write register
+   alu branch (4'b0010,IDEX_SignExt<<1,IDEX_PCplus2,Target,Unused2);   // Compute branch target address
+   alu ex (IDEX_ALUctl, IDEX_RD1, B, ALUOut, Zero);  // Main ALU operation
    mux_2x1_16bit MuxB(IDEX_RD2,IDEX_SignExt,IDEX_ALUSrc,B); // ALUSrc Mux 
    mux_2x1_2bit MuxWR(IDEX_rt,IDEX_rd,IDEX_RegDst,WR);      // RegDst Mux
 // MEM
-   reg MEMWB_MemtoReg;
-   reg [15:0] DMemory[0:1023],MEMWB_MemOut,MEMWB_ALUOut;
+   reg MEMWB_MemtoReg;  // Control signal for memory-to-register write
+   reg [15:0] DMemory[0:1023],MEMWB_MemOut,MEMWB_ALUOut;  // Data memory and pipeline registers for the WB stage
    reg [15:0] MEMWB_IR; // For monitoring the pipeline
-   wire [15:0] MemOut;
-   assign MemOut = DMemory[EXMEM_ALUOut>>1];
+   wire [15:0] MemOut;  // Data memory output
+   assign MemOut = DMemory[EXMEM_ALUOut>>1];  // Load data from memory
    always @(negedge clock) if (EXMEM_MemWrite) DMemory[EXMEM_ALUOut>>1] <= EXMEM_RD2;
 // WB
    mux_2x1_16bit MuxMemtoReg(MEMWB_ALUOut, MEMWB_MemOut, MEMWB_MemtoReg, WD); // MemtoReg Mux
